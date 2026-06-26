@@ -57,21 +57,28 @@ stages{
         }
     }
 
-    stage('deploy_dev')
-    {
-        when { expression {params.select_environment == 'dev'} beforeAgent true}
-        agent { label 'DevServer' }
-        steps
-        {
-            dir("/var/www/html")
-            {
-                unstash "maven-build"
-            }
-            sh """
-            cd /var/www/html/
-            jar -xvf webapp.war
-            """
+    stage('deploy_dev') {
+    when {
+        beforeAgent true
+        expression {
+            params.select_environment == 'dev'
         }
     }
+
+    agent {
+        label 'DevServer'
+    }
+
+    steps {
+        dir("/var/www/html") {
+            unstash "maven-build"
+        }
+
+        sh '''
+            cd /var/www/html
+            jar -xvf webapp.war
+        '''
+    }
+}
 }
 }
