@@ -1,6 +1,8 @@
 def hello() {
-    echo 'This is the message from groovy script'
-    echo "######################################"
-} 
+    echo "==================================="
+    echo "Hello from External Groovy Script"
+    echo "Welcome Lalit!"
+    echo "==================================="
+}
 
 return this

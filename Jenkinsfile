@@ -4,16 +4,22 @@ pipeline {
         label 'DevServer'
     }
 
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
     parameters {
         choice(
             name: 'select_environment',
             choices: ['dev', 'prod'],
-            description: 'Select deployment environment'
+            description: 'Select Deployment Environment'
         )
     }
 
     environment {
-        NAME = 'Lalit'
+        NAME = "Lalit"
+        DEPLOY_DIR = "/var/www/html"
     }
 
     tools {
@@ -22,9 +28,27 @@ pipeline {
 
     stages {
 
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Load Groovy Script') {
+            steps {
+                script {
+                    def util = load "script.groovy"
+                    util.hello()
+                }
+            }
+        }
+
         stage('Build') {
             steps {
-                sh 'mvn clean package -DskipTests=true'
+                sh '''
+                    echo "Building Application..."
+                    mvn clean package -DskipTests=true
+                '''
             }
         }
 
@@ -32,31 +56,31 @@ pipeline {
             parallel {
 
                 stage('Test A') {
-                    agent {
-                        label 'DevServer'
-                    }
                     steps {
-                        echo "Running Test A"
-                        sh 'mvn test'
+                        sh '''
+                            echo "Running Test A"
+                            mvn test
+                        '''
                     }
                 }
 
                 stage('Test B') {
-                    agent {
-                        label 'DevServer'
-                    }
                     steps {
-                        echo "Running Test B"
-                        sh 'mvn test'
+                        sh '''
+                            echo "Running Test B"
+                            mvn test
+                        '''
                     }
                 }
+
             }
 
             post {
                 success {
+
                     sh '''
-                        echo "Build artifacts:"
-                        ls -l webapp/target
+                        echo "Artifacts Generated:"
+                        ls -lh webapp/target
                     '''
 
                     dir('webapp/target') {
@@ -66,7 +90,7 @@ pipeline {
             }
         }
 
-        stage('Deploy to Dev') {
+        stage('Deploy to Development') {
 
             when {
                 beforeAgent true
@@ -75,43 +99,106 @@ pipeline {
                 }
             }
 
-            agent {
-                label 'DevServer'
-            }
-
             steps {
 
-                // Unstash in Jenkins workspace
                 unstash 'maven-build'
 
                 sh '''
-                    echo "Current Workspace:"
+                    echo "Current Workspace"
                     pwd
 
-                    echo "Workspace Files:"
-                    ls -l
+                    echo "Workspace Files"
+                    ls -lh
 
-                    echo "Cleaning deployment directory..."
-                    rm -rf /var/www/html/*
+                    WAR_FILE=$(ls *.war)
+
+                    echo "WAR File = $WAR_FILE"
+
+                    echo "Cleaning Deployment Directory..."
+                    rm -rf ${DEPLOY_DIR}/*
 
                     echo "Copying WAR..."
-                    cp *.war /var/www/html/webapp.war
+                    cp "$WAR_FILE" ${DEPLOY_DIR}/
+
+                    cd ${DEPLOY_DIR}
 
                     echo "Extracting WAR..."
-                    cd /var/www/html
-                    jar -xvf webapp.war
+                    jar -xvf "$WAR_FILE"
 
-                    echo "Removing WAR..."
-                    rm -f webapp.war
+                    rm -f "$WAR_FILE"
 
-                    echo "Deployment Successful!"
+                    echo "Development Deployment Successful"
                 '''
             }
         }
 
+        stage('Production Approval') {
+
+            when {
+                beforeAgent true
+                expression {
+                    params.select_environment == 'prod'
+                }
+            }
+
+            steps {
+                timeout(time: 5, unit: 'DAYS') {
+                    input(
+                        message: 'Deploy application to Production?',
+                        ok: 'Deploy'
+                    )
+                }
+            }
+        }
+
+        stage('Deploy to Production') {
+
+            when {
+                beforeAgent true
+                expression {
+                    params.select_environment == 'prod'
+                }
+            }
+
+            agent {
+                label 'ProdServer'
+            }
+
+            steps {
+
+                unstash 'maven-build'
+
+                sh '''
+                    echo "Workspace"
+                    pwd
+
+                    ls -lh
+
+                    WAR_FILE=$(ls *.war)
+
+                    echo "WAR File = $WAR_FILE"
+
+                    rm -rf ${DEPLOY_DIR}/*
+
+                    cp "$WAR_FILE" ${DEPLOY_DIR}/
+
+                    cd ${DEPLOY_DIR}
+
+                    jar -xvf "$WAR_FILE"
+
+                    rm -f "$WAR_FILE"
+
+                    echo "Production Deployment Successful"
+                '''
+            }
+        }
     }
 
     post {
+
+        always {
+            cleanWs()
+        }
 
         success {
             echo "Pipeline completed successfully."
@@ -119,6 +206,14 @@ pipeline {
 
         failure {
             echo "Pipeline failed."
+        }
+
+        unstable {
+            echo "Pipeline is unstable."
+        }
+
+        aborted {
+            echo "Pipeline was aborted."
         }
     }
 }
