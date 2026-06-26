@@ -5,6 +5,15 @@ agent {
   label 'DevServer'
 }
 
+parameters {
+  string defaultValue: 'Punjabi', name: 'LASTNAME'
+}
+
+
+environment{
+    NAME = 'lalit'
+}
+
 tools {
   maven 'My Maven'
 }
@@ -15,6 +24,7 @@ stages{
     {
         steps {
             sh 'mvn clean package'
+            echo "hello $NAME ${params.LASTNAME}"
         }
 
         post {
